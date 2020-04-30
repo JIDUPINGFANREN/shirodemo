@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper SYSTEM "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.changping.shiro.dao.oracledao.UserMapper2">
+	<select id="select_user_by_username" parameterType="String" resultType="com.changping.shiro.pojo.User">
+		select * from db_user where username = #{username}
+	</select>
+	<insert id="insert_user" parameterType="com.changping.shiro.pojo.User">
+		insert into db_user (userid,userpass,username,db_source) values (#{userid},#{userpass},#{username},#{db_source})
+	</insert>
+</mapper>

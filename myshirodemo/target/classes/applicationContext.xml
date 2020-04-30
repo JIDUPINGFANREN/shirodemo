@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:jdbc="http://www.springframework.org/schema/jdbc"
+	xmlns:aop="http://www.springframework.org/schema/aop"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+
+	xsi:schemaLocation="
+       http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/context
+       http://www.springframework.org/schema/context/spring-context.xsd
+       http://www.springframework.org/schema/jdbc 
+       http://www.springframework.org/schema/jdbc/spring-jdbc.xsd
+               http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd
+                http://www.springframework.org/schema/tx
+        http://www.springframework.org/schema/tx/spring-tx.xsd
+       ">
+	<!-- 配置securityManager-->
+	<bean id="securityManager" class="org.apache.shiro.web.mgt.DefaultWebSecurityManager">
+		<property name="cacheManager" ref="cacheManager" />
+		<property name="authenticator" ref="authenticator" />
+		<property name="sessionManager" ref ="sessionManager" />
+		<property name="rememberMeManager" ref ="rememberMeManager"></property>
+		<property name="realms">
+			<list>
+				<ref bean="jdbcRealm"/>
+				<ref bean="jdbcRealm2"/>
+			</list>
+		</property>
+	</bean>
+	
+	<!-- 多个realm时需要配置——ModularRealmAuthenticator-->
+	<bean id ="authenticator" class="org.apache.shiro.authc.pam.ModularRealmAuthenticator">
+		<property name="authenticationStrategy">
+			<bean class="org.apache.shiro.authc.pam.FirstSuccessfulStrategy">
+			<property name="stopAfterFirstSuccess" value="true"></property>
+			</bean>
+		</property>
+	</bean>
+	
+	<!--1.配置cacheManager 需要配置ehcache的pom依赖、配置文件 -->
+	<bean id="cacheManager" class="org.apache.shiro.cache.ehcache.EhCacheManager">
+		<property name="cacheManagerConfigFile" value="classpath:ehcache.xml" />
+	</bean>
+	<!-- 2.配置Realm,需要自己写一个类，来实现Realm这个接口,现在有两个realm -->
+	<!-- md5加密：替换当前realm的credentialsMatcher属性，直接使用HashedCredentialsMatcher对象。 -->
+	<bean id="jdbcRealm" class="com.changping.shiro.realm.MyShiroRealm">
+		<property name="credentialsMatcher">
+			<bean
+				class="org.apache.shiro.authc.credential.HashedCredentialsMatcher">
+				<property name="hashAlgorithmName" value="MD5"></property>
+				<property name="hashIterations" value="5000"></property>
+			</bean>
+		</property>
+	</bean>
+	<bean id="jdbcRealm2" class="com.changping.shiro.realm.MyShiroRealm2">
+		<property name="credentialsMatcher">
+			<bean
+				class="org.apache.shiro.authc.credential.HashedCredentialsMatcher">
+				<property name="hashAlgorithmName" value="SHA1"></property>
+				<property name="hashIterations" value="5000"></property>
+			</bean>
+		</property>
+	</bean>
+
+	<!--3.配置LifecycleBeanPostProcessor可以自动的调用配置在Spring Ioc容器中shiro bean的生命周期方法 -->
+	<bean id="lifecycleBeanPostProcessor"
+		class="org.apache.shiro.spring.LifecycleBeanPostProcessor" />
+
+	<!--4.启用Ioc容器中使用shiro的注解，但必须在配置了LifecycleBeanPostProcessor之后才能使用。 -->
+	<bean
+		class="org.springframework.aop.framework.autoproxy.DefaultAdvisorAutoProxyCreator"
+		depends-on="lifecycleBeanPostProcessor" />
+	<bean
+		class="org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor">
+		<property name="securityManager" ref="securityManager" />
+	</bean>
+
+	<!--5.配置ShiroFilter, id必须和web.xml文件中配置的DelegatingFilterProxy的<filter-name>一致。 
+		anon允许匿名访问， authc必须被认证之后才能访问即登陆之后才能访问的页面。 -->
+	<bean id="ShiroFilter"
+		class="org.apache.shiro.spring.web.ShiroFilterFactoryBean">
+		<property name="securityManager" ref="securityManager" />
+		<property name="loginUrl" value="/login.jsp" />
+		<property name="successUrl" value="/list.jsp" />
+		<property name="unauthorizedUrl" value="/unauthorized.jsp" />
+		
+		<property name="filterChainDefinitionMap" ref="filterChainDefinitionMap"></property>
+	<!--  
+		<property name="filterChainDefinitions">
+			<value>
+				/login.jsp = anon
+				/shiro_login = anon
+				/add_user.jsp = anon
+				/add_user =anon
+
+				/shiro_logout = logout
+
+				/user_Unique.jsp= roles[user]
+				/admin_Unique.jsp = roles[admin]
+				# everything else requires authentication:
+				/** = authc
+			</value>
+		</property>
+	-->
+	</bean>
+	
+    <!-- 配置一个bean，实际上是一个Map，通过实例工厂方法 -->
+    <bean id="filterChainDefinitionMap"
+    factory-bean="filterChainDefinitionMapBuilder" 
+    factory-method="buildFilterChainDefinitionMap"></bean>
+    
+    <bean id="filterChainDefinitionMapBuilder"
+    class="com.changping.shiro.factory.FilterChainDefinitionMapBuilder"></bean>
+	
+	<context:component-scan
+		base-package="com.changping.shiro.service"></context:component-scan>
+	<context:property-placeholder
+		location="classpath:dbConfig.properties" />
+		
+	<!-- mysql配置session -->
+	<bean id="dataSource_mysql"
+		class="org.apache.commons.dbcp.BasicDataSource">
+		<property name="driverClassName"
+			value="${mysql.driverClassName}" />
+		<property name="url" value="${mysql.url}" />
+		<property name="username" value="${mysql.jdbc.username}" />
+		<property name="password" value="${mysql.jdbc.password}" />
+	</bean>
+	<bean id="sqlSessionFactory_mysql"
+		class="org.mybatis.spring.SqlSessionFactoryBean">
+		<property name="dataSource" ref="dataSource_mysql" />
+		<property name="configLocation"
+			value="classpath:mybatis-config.xml" />
+	</bean>
+	<bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+		<property name="basePackage"
+			value="com.changping.shiro.dao.mysqldao" />
+		<property name="sqlSessionFactoryBeanName"
+			value="sqlSessionFactory_mysql" />
+	</bean>
+
+	<!-- oracle配置session -->
+	<bean id="sqlSessionFactory_oracle"
+		class="org.mybatis.spring.SqlSessionFactoryBean">
+		<property name="dataSource" ref="dataSource_oracle" />
+		<property name="configLocation"
+			value="classpath:mybatis-config.xml" />
+	</bean>
+	<bean id="dataSource_oracle"
+		class="org.apache.commons.dbcp.BasicDataSource">
+		<property name="driverClassName"
+			value="${oracle.driverClassName}" />
+		<property name="url" value="${oracle.url}" />
+		<property name="username" value="${oracle.jdbc.username}" />
+		<property name="password" value="${oracle.jdbc.password}" />
+	</bean>
+	<bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+		<property name="basePackage"
+			value="com.changping.shiro.dao.oracledao" />
+		<property name="sqlSessionFactoryBeanName"
+			value="sqlSessionFactory_oracle" />
+	</bean>
+	<!-- 配置session -->
+    <!-- sessionId生成 -->
+    <bean id="sessionIdGenerator" class="org.apache.shiro.session.mgt.eis.JavaUuidSessionIdGenerator"></bean>
+    
+    <bean id="sessionDAO" class="com.changping.shiro.controller.MySessionDAO">
+        <property name="activeSessionsCacheName" value="shiro-activeSessionCache"></property>
+        <property name="sessionIdGenerator" ref="sessionIdGenerator"></property>
+    </bean>
+        <!-- 会话Cookie模板 -->
+    <bean id="sessionIdCookie" class="org.apache.shiro.web.servlet.SimpleCookie">
+        <constructor-arg value="sid"/>
+        <property name="httpOnly" value="true"/>
+        <property name="maxAge" value="-1"/>
+    </bean>
+         <!--设定检查sesion过期事件-->
+    <bean id="sessionValidationScheduler" class="org.apache.shiro.session.mgt.quartz.QuartzSessionValidationScheduler">
+        <property name="sessionValidationInterval" value="1800000" />
+        <property name="sessionManager" ref="sessionManager" />
+    </bean>
+
+    <bean id="sessionManager" class="org.apache.shiro.web.session.mgt.DefaultWebSessionManager">
+        <property name="sessionDAO" ref="sessionDAO"></property>
+        <property name="deleteInvalidSessions" value="true"></property>
+        <property name="sessionValidationSchedulerEnabled" value="true"></property>
+        <property name="globalSessionTimeout" value="1800000"></property>
+        <property name="sessionIdCookieEnabled" value="true"/>
+        <property name="sessionValidationScheduler" ref="sessionValidationScheduler" />
+        <property name="sessionIdCookie" ref="sessionIdCookie"/>
+    </bean>
+     <!--植入JDBCTemplate-->
+    <bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+        <property name="dataSource" ref="dataSource_mysql"/>
+    </bean>
+    
+    <!-- 记住我 -->
+    <!--记住我Cookie -->
+		<bean id="rememberMeCookie" class="org.apache.shiro.web.servlet.SimpleCookie">
+			<!-- rememberMe 是cookie的名字 -->
+			<constructor-arg value="remenberMe"/>
+			<!-- cookie的缓存时间 -->
+			<property name="maxAge" value="2592000"/>
+		</bean>		
+		
+    <!--rememberManager管理器，写cookie，取出cookie生成用户信息 ,最后配置到securityManager中-->
+		<bean id="rememberMeManager" class="org.apache.shiro.web.mgt.CookieRememberMeManager">
+			<property name="cookie" ref="rememberMeCookie"></property>
+		</bean>
+</beans>
+
